@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Callipari Lab tests</title>
+<style>body{background:#0a0a0c;color:#eee;font:14px/1.5 ui-monospace,Menlo,monospace;padding:24px}.ok{color:#8be05a}.bad{color:#ff5c93}</style></head>
+<body><h1>Engine tests</h1><pre id="out"></pre>
+<script>var module = { exports: {} };</script>
+<script src="../engine.js"></script>
+<script>
+  var Engine = module.exports;
+  function require() { return Engine; }
+  var out = document.getElementById('out');
+  var process = { exit: function (code) { out.className = code ? 'bad' : 'ok'; } };
+  var console = { log: function (m) { out.textContent += m + '\n'; }, error: function () { out.textContent += Array.prototype.join.call(arguments, ' ') + '\n'; } };
+</script>
+<script src="engine.test.js"></script>
+</body></html>
