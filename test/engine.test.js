@@ -69,5 +69,15 @@ eq(E.satbCheck(rows).filter((x) => x.kind === 'bad').length, 0, 'no crossing fla
 for (const p of ['C E7 Am D7 G7 C', 'Cmaj7 G G7 Cmaj7', 'Am Dm E7 Am', 'C Ab Bb C']) {
   eq(E.satbCheck(E.satb(p.split(' ').map(E.parseChord))).length, 0, 'clean voice leading for ' + p);
 }
+const shape = (n) => { const c = E.parseChord(n); return E.guitarShapes(c.pcs, c.root)[0].frets.map((f) => (f < 0 ? 'x' : f)).join(''); };
+eq(shape('C'), 'x32010', 'guitar C');
+eq(shape('Am'), 'x02210', 'guitar Am');
+eq(shape('E'), '022100', 'guitar E');
+eq(shape('G'), '320003', 'guitar G');
+eq(shape('D'), 'xx0232', 'guitar D');
+eq(shape('F'), '133211', 'guitar F barre');
+eq(shape('G7'), '320001', 'guitar G7');
+eq(E.guitarShapes(E.parseChord('Bb').pcs, 10).length > 2, true, 'alternatives up the neck');
+eq(E.identify([0, 4, 7, 10], 0).name, 'C7', 'identify C7');
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

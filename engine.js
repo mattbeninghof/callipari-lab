@@ -452,6 +452,89 @@
     return options[0].v;
   }
 
+
+  /* ---------- Guitar ---------- */
+  const TUNING = [40, 45, 50, 55, 59, 64]; // E2 A2 D3 G3 B3 E4, low string first
+
+  /* Playable shapes for a set of pitch classes in standard tuning. A shape lists one fret
+     per string (-1 = muted). Rules: the lowest sounding note is the root, every required
+     note is present (the fifth is optional once a chord has four or more notes), at most
+     four fingers with a barre on the lowest fret, and a span of four frets. Ranked toward
+     full, low, open shapes. */
+  const shapeCache = new Map();
+  function guitarShapes(pcsIn, root, max = 8) {
+    const pcs = Array.from(new Set(pcsIn.map((p) => mod(p))));
+    const key = pcs.slice().sort((a, b) => a - b).join(',') + '/' + mod(root);
+    if (shapeCache.has(key)) return shapeCache.get(key);
+    const r = mod(root);
+    const optional = pcs.length >= 4 ? [mod(r + 7)] : [];
+    const required = pcs.filter((p) => !optional.includes(p));
+    const found = new Map();
+    for (let base = 0; base <= 12; base++) {
+      const opts = TUNING.map((open) => {
+        const o = [-1];
+        if (base <= 4 && pcs.includes(mod(open))) o.push(0);
+        for (let f = Math.max(1, base); f <= base + 3; f++) if (pcs.includes(mod(open + f))) o.push(f);
+        return o;
+      });
+      const pick = new Array(6);
+      const walk = (si) => {
+        if (si < 6) { for (const f of opts[si]) { pick[si] = f; walk(si + 1); } return; }
+        const sounding = pick.map((f, i) => (f < 0 ? null : TUNING[i] + f));
+        const idx = sounding.map((m, i) => (m == null ? -1 : i)).filter((i) => i >= 0);
+        if (idx.length < Math.min(3, pcs.length)) return;
+        if (mod(sounding[idx[0]]) !== r) return;
+        const have = new Set(idx.map((i) => mod(sounding[i])));
+        if (!required.every((p) => have.has(p))) return;
+        const fretted = pick.filter((f) => f > 0);
+        const lo = fretted.length ? Math.min(...fretted) : 0, hi = fretted.length ? Math.max(...fretted) : 0;
+        if (hi - lo > 3) return;
+        // Barre at the lowest fret when it covers strings with nothing open or muted in between.
+        const atLo = pick.map((f, i) => (f === lo && lo > 0 ? i : -1)).filter((i) => i >= 0);
+        let barre = null;
+        if (atLo.length >= 2) {
+          const a = atLo[0], b = atLo[atLo.length - 1];
+          if (pick.slice(a, b + 1).every((f) => f >= lo)) barre = { fret: lo, from: a, to: b };
+        }
+        let fingers = barre ? 1 + fretted.filter((f) => f > lo).length : fretted.length;
+        // Three or more neighboring strings on one higher fret can share a finger.
+        for (let i = 0; i + 2 < 6; i++) {
+          const f = pick[i];
+          if (f > lo && pick[i + 1] === f && pick[i + 2] === f) { let n = 3; while (i + n < 6 && pick[i + n] === f) n++; fingers -= n - 1; i += n - 1; }
+        }
+        if (fingers > 4) return;
+        const innerMutes = pick.slice(idx[0], idx[idx.length - 1] + 1).filter((f) => f < 0).length;
+        const opens = pick.filter((f) => f === 0).length;
+        const score = idx.length * 3 - innerMutes * 5 - lo * 0.9 - fingers * 0.6 + (lo <= 3 ? opens * 0.8 : 0) - (hi - lo) * 0.3 + have.size - hi * 0.3 - (hi > 4 ? opens * 2 : 0);
+        const id = pick.join(',');
+        if (!found.has(id)) found.set(id, { frets: pick.slice(), barre, fingers, score, midi: idx.map((i) => sounding[i]) });
+      };
+      walk(0);
+    }
+    // Keep the best shape per neck position so the alternatives move up the neck.
+    const ranked = Array.from(found.values()).sort((a, b) => b.score - a.score);
+    const out = [];
+    for (const s of ranked) {
+      const pos = Math.min(...s.frets.filter((f) => f > 0).concat(99));
+      if (out.some((o) => Math.abs(Math.min(...o.frets.filter((f) => f > 0).concat(99)) - pos) < 2 && o.score - s.score < 6)) continue;
+      out.push(s);
+      if (out.length >= max) break;
+    }
+    shapeCache.set(key, out);
+    return out;
+  }
+
+  // Name a pitch-class set as a known chord, if it is one.
+  function identify(pcs, bassPc) {
+    const set = Array.from(new Set(pcs.map((p) => mod(p))));
+    const tryRoots = bassPc == null ? set : [mod(bassPc)].concat(set.filter((p) => p !== mod(bassPc)));
+    for (const r of tryRoots) for (const q of Object.keys(QUALITIES)) {
+      const c = chord(r, q);
+      if (c.pcs.length === set.length && c.pcs.every((p) => set.includes(p))) return c;
+    }
+    return null;
+  }
+
   /* ---------- Audio ---------- */
   let ctx = null, master = null, verb = null;
   function audio() {
@@ -514,6 +597,15 @@
     const t = (opts.at ?? a.currentTime) + 0.02;
     const strum = opts.strum ?? 0.025;
     notes.forEach((m, i) => pluck(m, t + i * strum, opts.dur ?? 1.6, (opts.vel ?? 0.2) / Math.sqrt(notes.length)));
+    if (!opts.quiet) emit({ midi: notes.slice(), chord: opts.chord || null, name: opts.name || null, root: opts.root }, t - a.currentTime);
+  }
+
+  // Tell listeners (the keys and tab dock) what is sounding, in time with the audio.
+  function emit(info, delay) {
+    const fn = Engine.onPlay;
+    if (!fn) return;
+    if (delay > 0.05) setTimeout(() => fn(info), delay * 1000);
+    else fn(info);
   }
 
   // Additive tone from raw frequencies with per-partial levels (for the harmonic series).
@@ -536,7 +628,7 @@
   }
   const audioOk = () => !!(root.AudioContext || root.webkitAudioContext);
 
-  function playChord(c, opts) { playMidi(opts && opts.midi ? opts.midi : voice(c), opts); }
+  function playChord(c, opts = {}) { playMidi(opts.midi ? opts.midi : voice(c), { ...opts, chord: c }); }
 
   function playSequence(chords, opts = {}) {
     const a = audio();
@@ -546,7 +638,7 @@
     chords.forEach((c, i) => {
       const v = voiceLead(prev, c);
       prev = v;
-      playMidi(v, { at: a.currentTime + i * gap, dur: gap * 1.6, strum: 0.02 });
+      playMidi(v, { at: a.currentTime + i * gap, dur: gap * 1.6, strum: 0.02, chord: c });
     });
     return chords.length * gap;
   }
@@ -557,15 +649,18 @@
     const gap = opts.gap ?? 0.22;
     const base = 60 + mod(root);
     const midi = pcs.map((pc) => base + mod(pc - root)).concat(base + 12);
-    midi.forEach((m, i) => playMidi([m], { at: a.currentTime + i * gap, dur: 0.9, strum: 0, vel: 0.28 }));
+    midi.forEach((m, i) => playMidi([m], { at: a.currentTime + i * gap, dur: 0.9, strum: 0, vel: 0.28, quiet: true }));
+    emit({ midi, scale: true, root, name: opts.name || null }, 0);
   }
 
   const Engine = {
+    onPlay: null,
     SHARP, FLAT, BOOK, QUALITIES, BOOK_TYPES, SCALES, TENSIONS, NR,
     mod, name, parseNote, chord, parseChord, allChords, shared,
     proximity, proximityRange, P, L, R, nrPath, bartokAxes, bridgesTo, bridgeBetween,
     brightness, scaleNotes, isMinorMode, referenceOf, modeDiff, modeLinks, characteristic, modeKit, harmonize, triadQuality, steps, tensionClash, harmonics,
     glueIndex, plrGenerations, intervalWeb, EXT_TEETH, extensionStatus, polychord, satb, satbCheck,
+    TUNING, guitarShapes, identify,
     freq, voice, voiceLead, playMidi, playFreqs, audioOk, playChord, playSequence, playScale,
   };
 

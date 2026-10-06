@@ -19,6 +19,8 @@ arrows and squares. This app redraws those ideas as diagrams you can click and h
 | Extension Board | Illustrated Chord Extensions | Which 9ths, 11ths and 13ths each chord in a key can take, an interval web, the harmonic series and a polychord calculator. |
 | Four Voices | Arrangements Illustrated | Type a progression, compare block chords with a voice-led four-part pad, and see a rule check. |
 
+Every chord you play also appears in the **keys and tab dock**: the exact notes on a piano, plus a playable guitar shape (cycle through alternatives up the neck). Scales show as a fretboard map.
+
 Color code, as in the books: pink major, light blue minor, yellow dominant, purple diminished, green augmented.
 
 ## Running

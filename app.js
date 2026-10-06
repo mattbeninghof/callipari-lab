@@ -494,15 +494,15 @@
             <div class="row">${neighbors.map((n) => `<button class="chip" data-mode="${n}">${E.SCALES[n].label} <span style="color:var(--hand)">${E.name(st.root + E.modeDiff(k, n)[0])}→${E.name(st.root + E.modeDiff(n, k)[0])}</span></button>`).join('')}</div>
           </div>`;
         const pscale = $('#pscale', root);
-        pscale.addEventListener('click', () => E.playScale(notes, st.root));
+        pscale.addEventListener('click', () => E.playScale(notes, st.root, { name: E.name(st.root) + ' ' + sc.label }));
         const pt = $('#ptension', root);
-        if (pt) pt.addEventListener('click', () => E.playMidi(tension.pcs.map((p, i) => 48 + ((p - st.root + 12) % 12) + (i > 2 ? 12 : 0) + st.root % 12)));
+        if (pt) pt.addEventListener('click', () => E.playMidi(tension.pcs.map((p, i) => 48 + ((p - st.root + 12) % 12) + (i > 2 ? 12 : 0) + st.root % 12), { name: tonic.name + '(add ' + chars.map((c) => E.name(st.root + c)).join(', ') + ')', root: st.root }));
       };
       root.addEventListener('click', (e) => {
         const m = e.target.closest('[data-mode]');
-        if (m) { st.sel = m.dataset.mode; store.set('modes.sel', st.sel); draw(); E.playScale(E.scaleNotes(st.root, st.sel), st.root, { gap: 0.16 }); }
+        if (m) { st.sel = m.dataset.mode; store.set('modes.sel', st.sel); draw(); E.playScale(E.scaleNotes(st.root, st.sel), st.root, { gap: 0.16, name: E.name(st.root) + ' ' + E.SCALES[st.sel].label }); }
         const sq = e.target.closest('[data-note]');
-        if (sq) E.playMidi([60 + ((+sq.dataset.note - st.root + 12) % 12) + st.root % 12], { strum: 0, vel: 0.3 });
+        if (sq) E.playMidi([60 + ((+sq.dataset.note - st.root + 12) % 12) + st.root % 12], { strum: 0, vel: 0.3, name: E.name(+sq.dataset.note), root: +sq.dataset.note });
       });
       $('#mr', root).addEventListener('change', (e) => { st.root = +e.target.value; store.set('modes.root', st.root); draw(); });
       draw();
@@ -556,7 +556,7 @@
         $('#pweb', root).addEventListener('click', () => {
           const base = E.voice(c, 48);
           const ext = st.on.slice().sort((a, b) => a - b).map((iv) => 48 + (c.root % 12) + 12 + iv + (base[0] - 48 - (c.root % 12)));
-          E.playMidi(base.concat(ext));
+          E.playMidi(base.concat(ext), { name: c.name + (st.on.length ? '(add ' + E.EXT_TEETH.filter((t) => st.on.includes(t.iv)).map((t) => t.label).join(', ') + ')' : ''), root: c.root, chord: st.on.length ? null : c });
         });
       };
       const drawHarm = () => {
@@ -586,13 +586,13 @@
       };
       root.addEventListener('click', (e) => {
         const t = e.target.closest('[data-tooth]');
-        if (t) { const [i, iv] = t.dataset.tooth.split(':').map(Number); const c = diatonic()[i]; const v = E.voice(c, 48); E.playMidi(v.concat(v[0] + 12 + iv)); }
+        if (t) { const [i, iv] = t.dataset.tooth.split(':').map(Number); const c = diatonic()[i]; const v = E.voice(c, 48); E.playMidi(v.concat(v[0] + 12 + iv), { name: c.name + '(add ' + E.EXT_TEETH.find((t) => t.iv === iv).label + ')', root: c.root }); }
         const p = e.target.closest('[data-pick]');
         if (p) { st.deg = +p.dataset.pick; st.on = []; drawWeb(); }
         const a = e.target.closest('[data-add]');
         if (a) { const iv = +a.dataset.add; st.on = st.on.includes(iv) ? st.on.filter((x) => x !== iv) : st.on.concat(iv); drawWeb(); }
         const pc = e.target.closest('[data-poly]');
-        if (pc) { const lo = E.voice(fromId(st.lower), 48), up = E.voice(fromId(pc.dataset.poly), 62); E.playMidi(lo.concat(up), { strum: 0.03 }); }
+        if (pc) { const lo = E.voice(fromId(st.lower), 48), up = E.voice(fromId(pc.dataset.poly), 62); E.playMidi(lo.concat(up), { strum: 0.03, name: fromId(pc.dataset.poly).name + ' / ' + fromId(st.lower).name, root: fromId(st.lower).root }); }
       });
       $('#ek', root).addEventListener('change', (e) => { st.key = +e.target.value; store.set('ext.key', st.key); drawSaw(); drawWeb(); });
       drawSaw(); drawWeb(); drawHarm(); drawPoly();
@@ -663,7 +663,7 @@
         $('#vplay', root).addEventListener('click', () => {
           const gap = 0.95;
           const t0 = 0;
-          rows.forEach((r, i) => setTimeout(() => E.playMidi(['s', 'a', 't', 'b'].filter((v) => !st.mute.includes(v)).map((v) => r[v]), { dur: gap * 1.5, strum: 0.012 }), (t0 + i * gap) * 1000));
+          rows.forEach((r, i) => setTimeout(() => E.playMidi(['s', 'a', 't', 'b'].filter((v) => !st.mute.includes(v)).map((v) => r[v]), { dur: gap * 1.5, strum: 0.012, chord: chords[i] }), (t0 + i * gap) * 1000));
         });
       };
       $('#prog', root).addEventListener('input', (e) => { st.prog = e.target.value; store.set('voices.prog', st.prog); draw(); });
@@ -678,6 +678,147 @@
       draw();
     } };
   };
+
+
+  /* ---------- Keys and tab dock ---------- */
+  const dock = (() => {
+    const el = $('#dock');
+    const st = { info: null, alt: 0, view: store.get('dock.view', 'both'), open: store.get('dock.open', true) };
+    const WHITE = [0, 2, 4, 5, 7, 9, 11];
+
+    function piano(midi, fam) {
+      const notes = midi.slice().sort((a, b) => a - b);
+      let lo = notes.length ? notes[0] - (notes[0] % 12) : 48;
+      let hi = notes.length ? notes[notes.length - 1] + (11 - (notes[notes.length - 1] % 12)) : 71;
+      if (hi - lo < 23) hi = lo + 23;
+      const whites = [];
+      for (let m = lo; m <= hi; m++) if (WHITE.includes(m % 12)) whites.push(m);
+      const ww = 300 / whites.length, H = 92, bh = 56;
+      const col = famVar(fam);
+      let s = '';
+      whites.forEach((m, i) => {
+        const on = notes.includes(m);
+        s += `<g class="key" data-key="${m}"><rect x="${i * ww}" y="0" width="${ww - 1}" height="${H}" rx="3" fill="${on ? col : '#e9e9ee'}" stroke="#0a0a0c"/>
+          ${on ? `<text x="${i * ww + ww / 2}" y="${H - 8}" text-anchor="middle" font-size="${Math.min(10, ww * 0.55)}" font-weight="700" fill="#000">${E.name(m)}</text>` : m % 12 === 0 ? `<text x="${i * ww + ww / 2}" y="${H - 8}" text-anchor="middle" font-size="8" fill="#888">C${m / 12 - 1}</text>` : ''}</g>`;
+      });
+      whites.forEach((m, i) => {
+        const b = m + 1;
+        if (b > hi || WHITE.includes(b % 12)) return;
+        const on = notes.includes(b);
+        const x = (i + 1) * ww - ww * 0.32;
+        s += `<g class="key" data-key="${b}"><rect x="${x}" y="0" width="${ww * 0.62}" height="${bh}" rx="2" fill="${on ? col : '#1a1a20'}" stroke="#0a0a0c"/>
+          ${on ? `<text x="${x + ww * 0.31}" y="${bh - 6}" text-anchor="middle" font-size="${Math.min(8, ww * 0.45)}" font-weight="700" fill="#000">${E.name(b)}</text>` : ''}</g>`;
+      });
+      return `<svg class="piano" viewBox="0 0 300 ${H}" role="img" aria-label="Piano keys: ${notes.map((m) => E.name(m)).join(' ')}">${s}</svg>`;
+    }
+
+    function fretboardMap(pcs, root) {
+      // Every place the notes live on the first twelve frets, for scales and big stacks.
+      const W = 300, H = 92, fw = W / 13, sh = H / 7;
+      let s = `<rect x="${fw - 3}" y="${sh - 2}" width="3" height="${sh * 5 + 4}" fill="#ccc"/>`;
+      for (let f = 1; f <= 12; f++) s += `<line x1="${fw * (f + 1)}" x2="${fw * (f + 1)}" y1="${sh}" y2="${sh * 6}" stroke="#3a3a44"/>`;
+      [3, 5, 7, 9].forEach((f) => (s += `<circle cx="${fw * (f + 0.5)}" cy="${H - 4}" r="2" fill="#55555e"/>`));
+      s += `<circle cx="${fw * 12.5 - 4}" cy="${H - 4}" r="2" fill="#55555e"/><circle cx="${fw * 12.5 + 4}" cy="${H - 4}" r="2" fill="#55555e"/>`;
+      E.TUNING.forEach((open, i) => {
+        const y = sh * (6 - i);
+        s += `<line x1="${fw}" x2="${W}" y1="${y}" y2="${y}" stroke="#77777f" stroke-width="${1 + (5 - i) * 0.15}"/>`;
+        for (let f = 0; f <= 12; f++) {
+          const pc = (open + f) % 12;
+          if (!pcs.includes(pc)) continue;
+          const x = f === 0 ? fw / 2 : fw * (f + 0.5);
+          const isRoot = pc === ((root % 12) + 12) % 12;
+          s += `<circle cx="${x}" cy="${y}" r="${sh * 0.42}" fill="${isRoot ? 'var(--hand)' : '#0a0a0c'}" stroke="var(--hand)" stroke-width="1.4"/>`;
+        }
+      });
+      return `<svg class="fretmap" viewBox="0 0 ${W} ${H}" role="img" aria-label="Notes on the fretboard">${s}</svg>`;
+    }
+
+    function chordBox(shape, fam, root) {
+      const W = 118, H = 140, left = 18, top = 26, sw = (W - left - 10) / 5, fh = 21;
+      const fretted = shape.frets.filter((f) => f > 0);
+      const hi = fretted.length ? Math.max(...fretted) : 0;
+      const start = hi <= 5 ? 1 : Math.min(...fretted);
+      const col = famVar(fam);
+      let s = start === 1 ? `<rect x="${left - 1}" y="${top - 4}" width="${sw * 5 + 2}" height="4" fill="#eee"/>` : `<text x="${left - 5}" y="${top + fh * 0.65}" text-anchor="end" font-size="10" fill="#8d8d96">${start}</text>`;
+      for (let f = 0; f <= 5; f++) s += `<line x1="${left}" x2="${left + sw * 5}" y1="${top + f * fh}" y2="${top + f * fh}" stroke="#55555e"/>`;
+      for (let i = 0; i < 6; i++) s += `<line x1="${left + i * sw}" x2="${left + i * sw}" y1="${top}" y2="${top + fh * 5}" stroke="#9a9aa3" stroke-width="${1 + (5 - i) * 0.12}"/>`;
+      if (shape.barre && shape.barre.fret >= start) {
+        const y = top + (shape.barre.fret - start + 0.5) * fh;
+        s += `<rect x="${left + shape.barre.from * sw - 7}" y="${y - 7}" width="${(shape.barre.to - shape.barre.from) * sw + 14}" height="14" rx="7" fill="${col}" opacity=".9"/>`;
+      }
+      shape.frets.forEach((f, i) => {
+        const x = left + i * sw;
+        if (f < 0) s += `<text x="${x}" y="${top - 10}" text-anchor="middle" font-size="11" fill="#8d8d96">×</text>`;
+        else if (f === 0) s += `<circle cx="${x}" cy="${top - 14}" r="4" fill="none" stroke="#ddd" stroke-width="1.4"/>`;
+        else {
+          const y = top + (f - start + 0.5) * fh;
+          const pc = (E.TUNING[i] + f) % 12;
+          const isRoot = pc === ((root % 12) + 12) % 12;
+          s += `<circle cx="${x}" cy="${y}" r="7.5" fill="${isRoot ? col : '#0a0a0c'}" stroke="${col}" stroke-width="2"/>`;
+        }
+        if (f >= 0) s += `<text x="${x}" y="${top + fh * 5 + 13}" text-anchor="middle" font-size="8.5" fill="#8d8d96">${E.name(E.TUNING[i] + f)}</text>`;
+      });
+      return `<svg class="chordbox" viewBox="0 0 ${W} ${H}" role="img" aria-label="Guitar shape ${shape.frets.map((f) => (f < 0 ? 'x' : f)).join(' ')}">${s}</svg>`;
+    }
+
+    function render() {
+      el.dataset.open = st.open;
+      el.dataset.view = st.view;
+      const head = (title, fam, sub) => `<div class="dock-head">
+          <button class="dock-toggle" aria-expanded="${st.open}" aria-controls="dock-body">${st.open ? 'Hide' : 'Keys &amp; tab'}</button>
+          <b class="f-${fam || 'other'}">${esc(title)}</b><span class="notes-mini">${esc(sub || '')}</span>
+          <span class="dock-views">${['both', 'piano', 'guitar'].map((v) => `<button class="chip" data-dview="${v}" aria-pressed="${st.view === v}">${{ both: 'Both', piano: 'Piano', guitar: 'Guitar' }[v]}</button>`).join('')}</span></div>`;
+      const info = st.info;
+      if (!info) {
+        el.innerHTML = head('Keys & tab', 'other', '') + `<div class="dock-body" id="dock-body"><p class="sub dock-empty">Play any chord and its piano keys and a guitar shape show up here.</p></div>`;
+        return;
+      }
+      const pcs = Array.from(new Set((info.chord ? info.chord.pcs : info.midi).map((m) => ((m % 12) + 12) % 12)));
+      const root = info.chord ? info.chord.root : info.root != null ? info.root : Math.min(...info.midi) % 12;
+      const known = info.chord || (info.scale ? null : E.identify(pcs, Math.min(...info.midi)));
+      const name = info.name || (known ? known.name : pcs.map((p) => E.name(p)).join(' '));
+      const fam = known ? known.family : 'hand';
+      const shapes = info.scale || pcs.length > 5 ? [] : E.guitarShapes(pcs, root);
+      const alt = Math.min(st.alt, Math.max(0, shapes.length - 1));
+      const sub = info.scale ? pcs.map((p) => E.name(p)).join(' ') : info.midi.slice().sort((a, b) => a - b).map((m) => E.name(m)).join(' ');
+      let guitar;
+      if (shapes.length) {
+        const sh = shapes[alt];
+        guitar = `<div class="guitar">${chordBox(sh, fam, root)}<div class="alts">
+          <button class="btn" data-alt="-1" aria-label="Previous shape" ${alt === 0 ? 'disabled' : ''}>‹</button>
+          <span class="notes-mini">${sh.frets.map((f) => (f < 0 ? 'x' : f)).join(' ')}<br>${alt + 1} of ${shapes.length}</span>
+          <button class="btn" data-alt="1" aria-label="Next shape" ${alt >= shapes.length - 1 ? 'disabled' : ''}>›</button></div></div>`;
+      } else guitar = `<div class="guitar wide">${fretboardMap(pcs, root)}<span class="notes-mini">${info.scale ? 'Scale notes on the neck, root filled' : 'No comfortable single shape; here is every note on the neck'}</span></div>`;
+      el.innerHTML = head(name, fam, sub) + `<div class="dock-body" id="dock-body"><div class="pianowrap">${piano(info.midi, fam)}</div>${guitar}</div>`;
+    }
+
+    E.onPlay = (info) => {
+      // Single notes clicked on a scale don't replace the shown chord or scale.
+      if (info.midi.length === 1 && st.info && !info.chord) return;
+      const same = st.info && JSON.stringify(st.info.midi) === JSON.stringify(info.midi);
+      st.info = info;
+      if (!same) st.alt = 0;
+      render();
+    };
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.dock-toggle')) { st.open = !st.open; store.set('dock.open', st.open); render(); }
+      const v = e.target.closest('[data-dview]');
+      if (v) { st.view = v.dataset.dview; store.set('dock.view', st.view); render(); }
+      const a = e.target.closest('[data-alt]');
+      if (a && st.info) {
+        st.alt = Math.max(0, st.alt + +a.dataset.alt);
+        render();
+        const pcs = Array.from(new Set((st.info.chord ? st.info.chord.pcs : st.info.midi).map((m) => ((m % 12) + 12) % 12)));
+        const root = st.info.chord ? st.info.chord.root : st.info.root != null ? st.info.root : Math.min(...st.info.midi) % 12;
+        const sh = E.guitarShapes(pcs, root)[st.alt];
+        if (sh) E.playMidi(sh.midi, { strum: 0.045, quiet: true });
+      }
+      const k = e.target.closest('[data-key]');
+      if (k) E.playMidi([+k.dataset.key], { strum: 0, vel: 0.3, quiet: true });
+    });
+    render();
+    return { render };
+  })();
 
   /* ---------- Router ---------- */
   const TITLES = { home: 'Callipari Lab', circle: 'The Mandala', proximity: 'Proximity Ladder', bridges: 'Bridge Finder', plr: 'PLR Tree', modes: 'Modal Map', extensions: 'Extension Board', voices: 'Four Voices' };

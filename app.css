@@ -199,7 +199,7 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; 
 .chordpill:hover { background: rgba(255, 255, 255, 0.07); }
 .chordpill:active { transform: scale(0.96); }
 .f-maj { color: var(--maj); } .f-min { color: var(--min); } .f-dom { color: var(--dom); }
-.f-dim { color: var(--dim); } .f-aug { color: var(--aug); } .f-sus { color: var(--sus); } .f-other { color: var(--muted); }
+.f-dim { color: var(--dim); } .f-aug { color: var(--aug); } .f-sus { color: var(--sus); } .f-other { color: var(--muted); } .f-hand { color: var(--hand); }
 .arrow { color: var(--faint); font-weight: 700; }
 
 .legend { display: flex; flex-wrap: wrap; gap: var(--s4); font-size: 12px; color: var(--muted); }
@@ -294,4 +294,53 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; 
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Keys and tab dock ---------- */
+.dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: min(560px, calc(100vw - 40px));
+  background: rgba(19, 19, 23, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  z-index: 40;
+  padding: var(--s3) var(--s4) var(--s4);
+}
+.dock[data-open='false'] { width: auto; padding-bottom: var(--s3); }
+.dock[data-open='false'] .dock-body, .dock[data-open='false'] .dock-views, .dock[data-open='false'] .notes-mini { display: none; }
+.dock-head { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.dock-head b { font-family: var(--display); font-weight: 400; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-head .notes-mini { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.dock-toggle { border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; flex: none; }
+.dock-toggle:hover { border-color: var(--muted); }
+.dock-views { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+.dock-views .chip { padding: 4px 10px; font-size: 11px; }
+.dock-body { display: flex; gap: var(--s4); align-items: center; justify-content: space-between; margin-top: var(--s3); }
+.dock-empty { padding: var(--s2) 0; }
+.pianowrap { flex: 1; min-width: 0; max-width: 360px; }
+.dock[data-view='piano'] .pianowrap { max-width: 520px; margin: 0 auto; }
+.piano, .fretmap { width: 100%; height: auto; display: block; }
+.piano .key { cursor: pointer; }
+.piano .key:hover rect { opacity: 0.85; }
+.guitar { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.guitar.wide { flex: 1; flex-direction: column; align-items: stretch; min-width: 0; }
+.chordbox { width: 132px; height: auto; }
+.alts { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.alts .btn { padding: 2px 12px; font-size: 16px; }
+.alts .btn:disabled { opacity: 0.3; cursor: default; }
+.dock[data-view='piano'] .guitar { display: none; }
+.dock[data-view='guitar'] .pianowrap { display: none; }
+.dock[data-view='guitar'] .guitar.wide, .dock[data-view='guitar'] .guitar { flex: 1; justify-content: center; }
+main { padding-bottom: 260px; }
+@media (max-width: 820px) {
+  .dock { right: 8px; left: 8px; bottom: 8px; width: auto; padding: var(--s2) var(--s3) var(--s3); }
+  .dock-head b { font-size: 17px; }
+  .dock-head .notes-mini { display: none; }
+  .chordbox { width: 92px; }
+  .dock-body { gap: var(--s2); }
 }
