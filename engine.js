@@ -505,7 +505,7 @@
         if (fingers > 4) return;
         const innerMutes = pick.slice(idx[0], idx[idx.length - 1] + 1).filter((f) => f < 0).length;
         const opens = pick.filter((f) => f === 0).length;
-        const score = idx.length * 3 - innerMutes * 5 - lo * 0.9 - fingers * 0.6 + (lo <= 3 ? opens * 0.8 : 0) - (hi - lo) * 0.3 + have.size - hi * 0.3 - (hi > 4 ? opens * 2 : 0);
+        const score = idx.length * 3 - innerMutes * 5 - lo * 0.9 - fingers * 0.6 + (lo <= 3 ? opens * 0.8 : 0) - (hi - lo) * 0.3 + have.size - hi * 0.3 - (hi >= 4 ? opens * 4 : 0);
         const id = pick.join(',');
         if (!found.has(id)) found.set(id, { frets: pick.slice(), barre, fingers, score, midi: idx.map((i) => sounding[i]) });
       };
