@@ -312,7 +312,7 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; 
   padding: var(--s3) var(--s4) var(--s4);
 }
 .dock[data-open='false'] { width: auto; padding-bottom: var(--s3); }
-.dock[data-open='false'] .dock-body, .dock[data-open='false'] .dock-views, .dock[data-open='false'] .notes-mini { display: none; }
+.dock[data-open='false'] .dock-body, .dock[data-open='false'] .dock-views, .dock[data-open='false'] .notes-mini, .dock[data-open='false'] .dock-head b, .dock[data-open='false'] .dock-add { display: none; }
 .dock-head { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
 .dock-head b { font-family: var(--display); font-weight: 400; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dock-head .notes-mini { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
@@ -344,3 +344,26 @@ main { padding-bottom: 260px; }
   .chordbox { width: 92px; }
   .dock-body { gap: var(--s2); }
 }
+
+/* ---------- Sketchpad ---------- */
+.text-in { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--ink); font-weight: 600; }
+input[type='range'] { accent-color: var(--hand); width: 160px; }
+.count { margin-left: auto; background: var(--hand); color: #000; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.lane { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.sk-card {
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  border: 1.5px solid currentColor; border-radius: 12px; padding: var(--s2) var(--s3);
+  min-width: 112px; background: var(--bg); transition: background 0.15s, box-shadow 0.15s;
+}
+.sk-card.sel { background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px currentColor; }
+.sk-card.now { background: rgba(139, 224, 90, 0.14); }
+.sk-name { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--display); font-size: 22px; color: inherit; }
+.sk-card select { padding: 3px 26px 3px 8px; font-size: 12px; color: var(--ink); }
+.sk-tools { display: flex; gap: 2px; }
+.sk-tools button { background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); border-radius: 6px; width: 26px; height: 24px; cursor: pointer; font-size: 13px; padding: 0; }
+.sk-tools button:hover:not(:disabled) { color: var(--ink); border-color: var(--muted); }
+.sk-tools button:disabled { opacity: 0.3; cursor: default; }
+.dock-add { padding: 3px 10px; font-size: 11px; border-color: var(--hand); color: var(--hand); flex: none; }
+.dock-add:hover { background: var(--hand); color: #000; }
+.card .btn { justify-content: center; }
+.btn.danger { border-color: var(--maj); color: var(--maj); }

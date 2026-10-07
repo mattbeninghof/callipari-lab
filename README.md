@@ -11,6 +11,7 @@ arrows and squares. This app redraws those ideas as diagrams you can click and h
 
 | Tool | From | What it does |
 | --- | --- | --- |
+| Sketchpad | Write | Collect chords from any tool, set beats and tempo, get next-chord ideas, hear a voice-led four-part arrangement, and export MIDI (separate S/A/T/B parts or one chord track), a chord chart or a share link. |
 | The Mandala | Illustrated Harmony | Circle of fifths with layers for keys, the chain of dominants, tritone subs, dim axes and aug cycles. Rotate the home key to transpose. |
 | Proximity Ladder | Illustrated Harmony | Ranks every triad and dominant from near to far against a home chord: shared notes, then tritone notes, then the "best-worst" chords. |
 | Bridge Finder | Harmony 1 and 2 | Magic Glue Index between two chords, the shortest P/L/R walk, Bartók axis check and ranked bridge progressions. |
@@ -19,7 +20,7 @@ arrows and squares. This app redraws those ideas as diagrams you can click and h
 | Extension Board | Illustrated Chord Extensions | Which 9ths, 11ths and 13ths each chord in a key can take, an interval web, the harmonic series and a polychord calculator. |
 | Four Voices | Arrangements Illustrated | Type a progression, compare block chords with a voice-led four-part pad, and see a rule check. |
 
-Every chord you play also appears in the **keys and tab dock**: the exact notes on a piano, plus a playable guitar shape (cycle through alternatives up the neck). Scales show as a fretboard map.
+Every chord you play also appears in the **keys and tab dock**: the exact notes on a piano, plus a playable guitar shape (cycle through alternatives up the neck). Scales show as a fretboard map. Press **+ Add** in the dock to send a chord (or the whole progression that just played) to the Sketchpad.
 
 Color code, as in the books: pink major, light blue minor, yellow dominant, purple diminished, green augmented.
 

@@ -111,6 +111,83 @@
     lion: `<svg viewBox="0 0 160 120" aria-hidden="true" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="80" cy="58" r="36" stroke="var(--dom)" stroke-width="2" stroke-dasharray="4 5"/><circle cx="80" cy="60" r="20" stroke="#d8c09a" stroke-width="2" fill="#17140f"/><circle cx="73" cy="56" r="1.8" fill="#d8c09a"/><circle cx="87" cy="56" r="1.8" fill="#d8c09a"/><path d="M76 66c2 3 6 3 8 0" stroke="#d8c09a" stroke-width="1.6"/><path d="M30 104c30 -8 70 -8 100 0" stroke="var(--hand)" stroke-width="1.6" stroke-dasharray="2 5"/></svg>`,
   };
 
+
+  /* Four-voice piano roll shared by Four Voices and the Sketchpad. beats sets column widths. */
+  const VC = { s: 'var(--dom)', a: 'var(--aug)', t: 'var(--min)', b: 'var(--maj)' };
+  function rollSVG(chords, rows, mute = [], issues = [], beats = null, now = -1) {
+    const all = rows.flatMap((r) => [r.s, r.a, r.t, r.b]);
+    const lo = Math.min(...all) - 2, hi = Math.max(...all) + 2;
+    const W = 720, H = 300;
+    const weights = beats || rows.map(() => 1);
+    const total = weights.reduce((x, y) => x + y, 0);
+    const xs = [];
+    let acc = 0;
+    weights.forEach((w) => { xs.push(60 + ((acc + Math.min(w, 2) / 2) / total) * (W - 60)); acc += w; });
+    const left = (i) => 60 + (weights.slice(0, i).reduce((x, y) => x + y, 0) / total) * (W - 60);
+    const y = (m) => 20 + (hi - m) / (hi - lo) * (H - 40);
+    const role = (c, m) => { const iv = (m - c.root + 120) % 12; return { 0: 'R', 3: 'b3', 4: '3', 6: 'b5', 7: '5', 8: '#5', 9: '6', 10: 'b7', 11: '7', 2: '9', 5: '4' }[iv] || ''; };
+    let s = '';
+    if (now >= 0) s += `<rect x="${left(now)}" y="0" width="${left(now + 1) - left(now)}" height="${H + 30}" fill="rgba(139,224,90,.08)" rx="8"/>`;
+    for (let m = lo; m <= hi; m++) if (m % 12 === 0) s += `<line x1="40" x2="${W}" y1="${y(m)}" y2="${y(m)}" stroke="#1e1e24"/><text x="4" y="${y(m) + 4}" font-size="10" fill="#555">C${m / 12 - 1}</text>`;
+    if (beats) for (let i = 1; i < rows.length; i++) s += `<line x1="${left(i)}" x2="${left(i)}" y1="10" y2="${H}" stroke="#1e1e24" stroke-dasharray="2 4"/>`;
+    for (const v of ['b', 't', 'a', 's']) {
+      const pts = rows.map((r, i) => [xs[i], y(r[v])]);
+      s += `<path d="M${pts.map((p) => p.join(',')).join(' L')}" fill="none" stroke="${VC[v]}" stroke-width="1.6" opacity="${mute.includes(v) ? 0.12 : 0.55}"/>`;
+      rows.forEach((r, i) => {
+        const [px, py] = pts[i];
+        s += `<g opacity="${mute.includes(v) ? 0.2 : 1}"><rect x="${px - 26}" y="${py - 10}" width="52" height="20" rx="6" fill="#0a0a0c" stroke="${VC[v]}" stroke-width="1.8"/><text x="${px}" y="${py + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="${VC[v]}">${E.name(r[v])} <tspan fill="#8d8d96" font-weight="500">${role(chords[i], r[v])}</tspan></text></g>`;
+      });
+    }
+    chords.forEach((c, i) => {
+      const bad = issues.some((x) => x.at === i);
+      s += `<text x="${xs[i]}" y="${H + 18}" text-anchor="middle" font-size="14" font-weight="700" fill="${famVar(c.family)}">${esc(c.name)}${bad ? ' •' : ''}</text>`;
+    });
+    return { svg: s, W, H, VC };
+  }
+
+
+  /* ---------- Sketch (persistent progression) ---------- */
+  const sketch = (() => {
+    let mem = null;
+    const blank = () => ({ title: 'Untitled sketch', bpm: 92, items: [] });
+    const get = () => { if (!mem) mem = store.get('sketch', null) || blank(); return mem; };
+    const save = () => { store.set('sketch', mem); badge(); };
+    function badge() {
+      const n = get().items.length;
+      const b = $('#sketch-count');
+      if (b) { b.textContent = n; b.hidden = !n; }
+    }
+    function add(ids, at) {
+      const sk = get();
+      const items = ids.map((id) => ({ id, beats: 4 }));
+      if (at == null || at >= sk.items.length) sk.items.push(...items);
+      else sk.items.splice(at, 0, ...items);
+      save();
+      toast(`Added ${ids.map((id) => fromId(id).name).join(' ')} to the sketchpad`);
+    }
+    return { get, save, add, badge, blank, set: (v) => { mem = v; save(); } };
+  })();
+
+  // Remember the last progression that played, so the dock can offer to keep all of it.
+  let lastSeq = null;
+  let sharedLoaded = false;
+  const _playSequence = E.playSequence;
+  E.playSequence = (chords, opts) => { lastSeq = { ids: chords.map((c) => c.id), at: Date.now() }; return _playSequence(chords, opts); };
+
+  function download(bytesOrText, filename, type) {
+    const blob = new Blob([bytesOrText], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  async function copyText(t, msg) {
+    try { await navigator.clipboard.writeText(t); toast(msg); }
+    catch (e) { window.prompt('Copy this:', t); }
+  }
+  const slug = (t) => (t || 'sketch').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'sketch';
+
   /* ---------- Views ---------- */
   const VIEWS = {};
 
@@ -128,7 +205,7 @@
           <span class="kicker">A playable companion</span>
           <h1>Follow the arrows. Hear the chords.</h1>
           <p class="lede">Brian Callipari's books turn harmony into diagrams: colored circles, arrows and squares you can read like a map. Callipari Lab makes those maps <em>playable</em>. Click any chord to hear it, rotate the circle to change key, and build your own connections.</p>
-          <div class="row"><a class="btn primary" href="#/circle">Start with the circle</a><a class="btn" href="#/proximity">Near and far from C</a></div>
+          <div class="row"><a class="btn primary" href="#/circle">Start with the circle</a><a class="btn" href="#/sketch">Write a progression</a></div>
         </div>
         ${ART.wheel}
       </div>
@@ -631,35 +708,17 @@
         if (bad.length) { out.innerHTML = `<div class="card flag bad">Can't read ${bad.map((b) => `<b>${esc(b)}</b>`).join(', ')}. Try names like C, F#m, Bb7, Bdim, Caug, Cmaj7, Dm7 or Bm7b5.</div>`; return; }
         const rows = st.mode === 'led' ? E.satb(chords) : blockRows(chords);
         const issues = E.satbCheck(rows);
-        const all = rows.flatMap((r) => [r.s, r.a, r.t, r.b]);
-        const lo = Math.min(...all) - 2, hi = Math.max(...all) + 2;
-        const W = 720, H = 300, colW = (W - 60) / rows.length;
-        const y = (m) => 20 + (hi - m) / (hi - lo) * (H - 40);
-        const VC = { s: 'var(--dom)', a: 'var(--aug)', t: 'var(--min)', b: 'var(--maj)' };
-        const role = (c, m) => { const iv = (m - c.root + 120) % 12; return { 0: 'R', 3: 'b3', 4: '3', 6: 'b5', 7: '5', 8: '#5', 9: '6', 10: 'b7', 11: '7', 2: '9', 5: '4' }[iv] || ''; };
-        let s = '';
-        for (let m = lo; m <= hi; m++) if (m % 12 === 0) s += `<line x1="40" x2="${W}" y1="${y(m)}" y2="${y(m)}" stroke="#1e1e24"/><text x="4" y="${y(m) + 4}" font-size="10" fill="#555">C${m / 12 - 1}</text>`;
-        for (const v of ['b', 't', 'a', 's']) {
-          const pts = rows.map((r, i) => [60 + i * colW + colW / 2, y(r[v])]);
-          s += `<path d="M${pts.map((p) => p.join(',')).join(' L')}" fill="none" stroke="${VC[v]}" stroke-width="1.6" opacity="${st.mute.includes(v) ? 0.12 : 0.55}"/>`;
-          rows.forEach((r, i) => {
-            const [px, py] = pts[i];
-            s += `<g opacity="${st.mute.includes(v) ? 0.2 : 1}"><rect x="${px - 26}" y="${py - 10}" width="52" height="20" rx="6" fill="#0a0a0c" stroke="${VC[v]}" stroke-width="1.8"/><text x="${px}" y="${py + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="${VC[v]}">${E.name(r[v])} <tspan fill="#8d8d96" font-weight="500">${role(chords[i], r[v])}</tspan></text></g>`;
-          });
-        }
-        chords.forEach((c, i) => {
-          const bad = issues.some((x) => x.at === i);
-          s += `<text x="${60 + i * colW + colW / 2}" y="${H + 18}" text-anchor="middle" font-size="14" font-weight="700" fill="${famVar(c.family)}">${esc(c.name)}${bad ? ' •' : ''}</text>`;
-        });
+        const { svg: s, W, H, VC } = rollSVG(chords, rows, st.mute, issues);
         const moved = ['s', 'a', 't', 'b'].map((v) => rows.slice(1).reduce((sum, r, i) => sum + Math.abs(r[v] - rows[i][v]), 0));
         out.innerHTML = `<div class="stack">
           <div class="card stack"><svg class="roll" viewBox="0 0 ${W} ${H + 30}" role="img" aria-label="Four voice piano roll">${s}</svg>
-            <div class="row"><button class="btn primary" id="vplay">▶ Play</button>
+            <div class="row"><button class="btn primary" id="vplay">▶ Play</button><button class="btn" id="vsend">+ Send to Sketchpad</button>
             ${[['s', 'Soprano'], ['a', 'Alto'], ['t', 'Tenor'], ['b', 'Bass']].map(([v, n]) => `<button class="chip v-${v}" data-mute="${v}" aria-pressed="${!st.mute.includes(v)}" style="${!st.mute.includes(v) ? `background:${VC[v]};border-color:${VC[v]};color:#000` : ''}">${n}</button>`).join('')}</div></div>
           <div class="card stack"><h3>Rule check</h3>
             ${issues.length ? issues.map((x) => `<div class="flag ${x.kind}"><b>${esc(chords[x.at - (x.text.startsWith('Voices') ? 0 : 1)]?.name || '')} → ${esc(chords[x.at].name)}</b> · ${esc(x.text)}</div>`).join('') : '<div class="flag ok">Clean: no crossings, no parallel fifths or octaves, no big leaps.</div>'}
             <p class="sub">Semitones moved: ${['Soprano', 'Alto', 'Tenor', 'Bass'].map((n, i) => `${n} ${moved[i]}`).join(' · ')}</p>
             <p class="callout">${st.mode === 'led' ? 'Each voice takes the nearest chord tone and common tones are held, so the inner voices barely move.' : 'Root-position blocks: every voice jumps with the bass. Switch to Voice-led to hear the difference.'}</p></div></div>`;
+        $('#vsend', root).addEventListener('click', () => sketch.add(chords.map((c) => c.id)));
         $('#vplay', root).addEventListener('click', () => {
           const gap = 0.95;
           const t0 = 0;
@@ -761,12 +820,21 @@
       return `<svg class="chordbox" viewBox="0 0 ${W} ${H}" role="img" aria-label="Guitar shape ${shape.frets.map((f) => (f < 0 ? 'x' : f)).join(' ')}">${s}</svg>`;
     }
 
+    function addBtns() {
+      const info = st.info;
+      if (!info || info.scale) return '';
+      const known = info.chord || E.identify(info.midi.map((m) => ((m % 12) + 12) % 12), Math.min(...info.midi));
+      if (!known || !E.QUALITIES[known.quality]) return '';
+      let out = `<button class="chip dock-add" data-add-chord="${known.id}" title="Add ${esc(known.name)} to the sketchpad">+ Add</button>`;
+      if (lastSeq && Date.now() - lastSeq.at < 15000 && lastSeq.ids.length > 1 && lastSeq.ids.includes(known.id)) out += `<button class="chip dock-add" data-add-seq title="Add the whole progression to the sketchpad">+ All ${lastSeq.ids.length}</button>`;
+      return out;
+    }
     function render() {
       el.dataset.open = st.open;
       el.dataset.view = st.view;
       const head = (title, fam, sub) => `<div class="dock-head">
           <button class="dock-toggle" aria-expanded="${st.open}" aria-controls="dock-body">${st.open ? 'Hide' : 'Keys &amp; tab'}</button>
-          <b class="f-${fam || 'other'}">${esc(title)}</b><span class="notes-mini">${esc(sub || '')}</span>
+          <b class="f-${fam || 'other'}">${esc(title)}</b>${addBtns()}<span class="notes-mini">${esc(sub || '')}</span>
           <span class="dock-views">${['both', 'piano', 'guitar'].map((v) => `<button class="chip" data-dview="${v}" aria-pressed="${st.view === v}">${{ both: 'Both', piano: 'Piano', guitar: 'Guitar' }[v]}</button>`).join('')}</span></div>`;
       const info = st.info;
       if (!info) {
@@ -813,6 +881,9 @@
         const sh = E.guitarShapes(pcs, root)[st.alt];
         if (sh) E.playMidi(sh.midi, { strum: 0.045, quiet: true });
       }
+      const ac = e.target.closest('[data-add-chord]');
+      if (ac) sketch.add([ac.dataset.addChord]);
+      if (e.target.closest('[data-add-seq]') && lastSeq) sketch.add(lastSeq.ids);
       const k = e.target.closest('[data-key]');
       if (k) E.playMidi([+k.dataset.key], { strum: 0, vel: 0.3, quiet: true });
     });
@@ -820,10 +891,241 @@
     return { render };
   })();
 
+
+  /* Sketchpad */
+  const TEMPLATES = [
+    ['Four-chord pop', 'C G Am F'],
+    ['Jazz two-five-one', 'Dm7 G7 Cmaj7 Cmaj7'],
+    ["Pachelbel's Canon", 'C G Am Em F C F G'],
+    ['Andalusian cadence', 'Am G F E'],
+    ['Film-score PLR', 'C Ab Fm C'],
+  ];
+  function nextIdeas(c, home) {
+    const groups = [];
+    const pick = (list) => list.filter((x, i, a) => x && x.chord.id !== c.id && a.findIndex((y) => y && y.chord.id === x.chord.id) === i);
+    if (c.family === 'dom') {
+      groups.push(['Resolve it', 'A dominant wants to fall a fifth.', pick([
+        { chord: E.chord(c.root + 5, 'maj'), why: 'The plain resolution' },
+        { chord: E.chord(c.root + 5, 'min'), why: 'Resolve to minor instead' },
+        { chord: E.chord(c.root + 2, 'min'), why: 'Deceptive: land on the relative minor' },
+        { chord: E.chord(c.root + 5, 'dom7'), why: 'Keep falling down the chain of dominants' },
+        { chord: E.chord(c.root + 11, 'maj'), why: 'Tritone-sub landing, a half step down' },
+      ])]);
+    }
+    if (c.quality === 'maj' || c.quality === 'min') {
+      groups.push(['One note moves', 'Change a single note; the other two are glue.', pick(['P', 'R', 'L'].map((op) => ({ chord: E.NR[op].fn(c), why: E.NR[op].label }))) ]);
+    }
+    const close = E.proximityRange(c, ['maj', 'min']).filter((r) => r.tier === 2).slice(0, 4).map((r) => ({ chord: r.chord, why: 'Shares ' + E.shared(c, r.chord).map((p) => E.name(p)).join(' and ') }));
+    groups.push(['Stay close', 'Two notes in common keep the change smooth.', pick(close)]);
+    if (home && c.id !== home.id) {
+      groups.push(['Head home', 'Build tension that points back to ' + home.name + '.', pick([
+        { chord: home, why: 'Straight back' },
+        { chord: E.chord(home.root + 7, 'dom7'), why: 'Its dominant (V7)' },
+        { chord: E.chord(home.root + 1, 'dom7'), why: 'Tritone substitute (bII7)' },
+        { chord: E.chord(home.root + 5, home.quality === 'min' ? 'min' : 'maj'), why: 'Plagal: the IV chord' },
+        { chord: E.chord(home.root + 11, 'dim7'), why: 'Leading diminished' },
+      ])]);
+    }
+    if (c.quality === 'maj' || c.quality === 'min') {
+      groups.push(['Bold jump', 'Same Bartók axis: far away, same function.', pick([3, 6, 9].map((d) => ({ chord: E.chord(c.root + d, c.quality), why: (d === 6 ? 'A tritone' : 'A minor third') + ' away' })))]);
+    }
+    return groups.filter((g) => g[2].length);
+  }
+
+  VIEWS.sketch = () => {
+    const st = { sel: -1, loop: store.get('sketch.loop', true), mute: [], playing: false, now: -1, timers: [] };
+    const html = `<section class="view">
+      <div class="head"><span class="kicker">Write · Your song</span><h2>Sketchpad</h2>
+      <p class="lede">Collect chords from any tool, put them in order, and hear them as a voice-led four-part arrangement. When it sounds right, export the parts as <em>MIDI</em> for your DAW.</p></div>
+      <div class="card tight row between">
+        <label class="field" style="flex:1;min-width:200px">Title <input id="sk-title" class="text-in" spellcheck="false"></label>
+        <label class="field">Tempo <span class="row"><input id="sk-bpm" type="range" min="50" max="180" step="1"><b id="sk-bpmv" style="min-width:58px"></b></span></label>
+        <div class="row" style="padding-top:18px"><button class="btn primary" id="sk-play">▶ Play</button><button class="chip" id="sk-loop" aria-pressed="${st.loop}">Loop</button></div>
+      </div>
+      <div id="sk-restore"></div>
+      <div id="sk-main" class="stack"></div></section>`;
+    return { html, mount: (root) => {
+      if (sharedLoaded) {
+        sharedLoaded = false;
+        $('#sk-restore', root).innerHTML = `<div class="flag ok row between">You opened a shared sketch. Your previous sketch is saved. <button class="btn" id="sk-undo">Restore my previous sketch</button></div>`;
+        $('#sk-undo', root).addEventListener('click', () => { const b = store.get('sketch.backup', null); if (b) { sketch.set(b); route(); } });
+      }
+      const sk = sketch.get();
+      $('#sk-title', root).value = sk.title;
+      $('#sk-bpm', root).value = sk.bpm;
+      $('#sk-bpmv', root).textContent = sk.bpm + ' bpm';
+      const chords = () => sketch.get().items.map((it) => fromId(it.id));
+      const stop = () => { st.timers.forEach(clearTimeout); st.timers = []; st.playing = false; st.now = -1; $('#sk-play', root).textContent = '▶ Play'; draw(); };
+      const play = () => {
+        const items = sketch.get().items;
+        if (!items.length) return;
+        if (!E.audioOk()) { toast('Audio is not available in this browser'); return; }
+        const rows = E.satb(chords());
+        const spb = 60 / sketch.get().bpm;
+        st.playing = true;
+        $('#sk-play', root).textContent = '■ Stop';
+        let t = 0;
+        items.forEach((it, i) => {
+          const at = t;
+          st.timers.push(setTimeout(() => {
+            st.now = i;
+            const r = rows[i];
+            E.playMidi(['s', 'a', 't', 'b'].filter((v) => !st.mute.includes(v)).map((v) => r[v]), { dur: it.beats * spb * 1.05, strum: 0.012, chord: fromId(it.id) });
+            drawRoll();
+            $$('.sk-card', root).forEach((c) => c.classList.toggle('now', +c.dataset.i === i));
+          }, at * 1000));
+          t += it.beats * spb;
+        });
+        st.timers.push(setTimeout(() => { if (st.loop && st.playing) { st.timers = []; play(); } else stop(); }, t * 1000));
+      };
+      const drawRoll = () => {
+        const el = $('#sk-roll', root);
+        if (!el) return;
+        const items = sketch.get().items, cs = chords();
+        const rows = E.satb(cs);
+        const { svg, W, H } = rollSVG(cs, rows, st.mute, E.satbCheck(rows), items.map((it) => it.beats), st.now);
+        el.setAttribute('viewBox', `0 0 ${W} ${H + 30}`);
+        el.innerHTML = svg;
+      };
+      const draw = () => {
+        const sk = sketch.get();
+        const main = $('#sk-main', root);
+        if (!sk.items.length) {
+          main.innerHTML = `<div class="card empty">${ART.guitar}<h3>An empty page</h3>
+            <p>Play any chord in any tool, then press <b>+ Add</b> in the keys panel. Or start from a classic and bend it.</p>
+            <div class="row" style="justify-content:center">${TEMPLATES.map(([n, p]) => `<button class="chip" data-tpl="${esc(p)}">${esc(n)}</button>`).join('')}</div></div>`;
+          return;
+        }
+        const cs = chords();
+        const home = cs[0];
+        const sel = st.sel >= 0 && st.sel < cs.length ? st.sel : cs.length - 1;
+        const rows = E.satb(cs);
+        const issues = E.satbCheck(rows);
+        const beats = sk.items.reduce((x, it) => x + it.beats, 0);
+        main.innerHTML = `
+          <div class="card stack"><div class="row between"><h3>Progression</h3><span class="sub">${sk.items.length} chords · ${beats} beats · ${Math.round(beats * 60 / sk.bpm)} s</span></div>
+            <div class="lane">${sk.items.map((it, i) => { const c = cs[i]; return `<div class="sk-card f-${c.family}${i === sel ? ' sel' : ''}${i === st.now ? ' now' : ''}" data-i="${i}">
+              <button class="sk-name" data-select="${i}" aria-label="Select ${esc(c.name)}">${esc(c.name)}</button>
+              <span class="notes-mini">${noteNames(c)}</span>
+              <select data-beats="${i}" aria-label="Beats">${[1, 2, 3, 4, 6, 8].map((b) => `<option value="${b}"${b === it.beats ? ' selected' : ''}>${b} beat${b > 1 ? 's' : ''}</option>`).join('')}</select>
+              <span class="sk-tools"><button data-move="${i}:-1" aria-label="Move left" ${i === 0 ? 'disabled' : ''}>‹</button><button data-dup="${i}" aria-label="Duplicate">⧉</button><button data-move="${i}:1" aria-label="Move right" ${i === sk.items.length - 1 ? 'disabled' : ''}>›</button><button data-del="${i}" aria-label="Remove">×</button></span>
+            </div>`; }).join('')}</div>
+            <p class="sub" style="font-size:12px">Click a chord name to select it and hear it. New ideas are inserted after the selected chord.</p>
+          </div>
+          <div class="grid2">
+            <div class="card stack"><div class="row between"><h3>What next after ${esc(cs[sel].name)}?</h3>${pill(cs[sel])}</div>
+              ${nextIdeas(cs[sel], home).map(([title, why, list]) => `<div><b style="font-size:14px">${esc(title)}</b> <span class="sub" style="font-size:12px">${esc(why)}</span>
+                <div class="row" style="margin-top:6px">${list.map((x) => `<button class="chordpill f-${x.chord.family}" data-idea="${x.chord.id}" title="${esc(x.why)}">+ ${esc(x.chord.name)}<small>${esc(x.why)}</small></button>`).join('')}</div></div>`).join('')}
+              <p class="sub" style="font-size:12px">Each idea plays in context when you add it. To audition first: <button class="btn" id="sk-try">▶ Try the top idea</button></p>
+            </div>
+            <div class="card stack"><h3>Export</h3>
+              <button class="btn primary" id="ex-parts">Download MIDI: four separate parts</button>
+              <button class="btn" id="ex-chords">Download MIDI: one chord track</button>
+              <button class="btn" id="ex-chart">Copy chord chart</button>
+              <button class="btn" id="ex-link">Copy share link</button>
+              <p class="sub" style="font-size:12px">The parts file has Soprano, Alto, Tenor and Bass on their own tracks and channels, with chord names as markers, at ${sk.bpm} bpm. Drop it into Logic, Ableton, GarageBand or any DAW.</p>
+              <button class="btn" id="ex-clear" style="margin-top:8px">Clear the sketchpad</button>
+            </div>
+          </div>
+          <div class="card stack"><div class="row between"><h3>Arrangement</h3><span class="row">${[['s', 'Soprano'], ['a', 'Alto'], ['t', 'Tenor'], ['b', 'Bass']].map(([v, n]) => `<button class="chip" data-mute="${v}" aria-pressed="${!st.mute.includes(v)}" style="${!st.mute.includes(v) ? `background:${VC[v]};border-color:${VC[v]};color:#000` : ''}">${n}</button>`).join('')}</span></div>
+            <svg id="sk-roll" class="roll" role="img" aria-label="Four voice arrangement"></svg>
+            ${issues.length ? issues.map((x) => `<div class="flag ${x.kind}">${esc(cs[x.at].name)} · ${esc(x.text)}</div>`).join('') : '<div class="flag ok">Clean voice leading: no crossings, no parallel fifths or octaves, no big leaps.</div>'}
+          </div>`;
+        drawRoll();
+      };
+      const exportMidi = (mode) => {
+        const sk = sketch.get(), cs = chords(), rows = E.satb(cs);
+        let t = 0;
+        const parts = { s: [], a: [], t: [], b: [] }, markers = [];
+        sk.items.forEach((it, i) => {
+          markers.push({ beat: t, text: cs[i].name });
+          for (const v of ['s', 'a', 't', 'b']) parts[v].push({ midi: rows[i][v], start: t, dur: it.beats, vel: v === 's' ? 92 : 80 });
+          t += it.beats;
+        });
+        const tracks = mode === 'parts'
+          ? [['s', 'Soprano', 0], ['a', 'Alto', 1], ['t', 'Tenor', 2], ['b', 'Bass', 3]].map(([v, n, ch]) => ({ name: n, channel: ch, program: 0, notes: parts[v] }))
+          : [{ name: 'Chords', channel: 0, program: 0, notes: [].concat(parts.s, parts.a, parts.t, parts.b) }];
+        const bytes = E.midiFile(tracks, { bpm: sk.bpm, markers, title: sk.title });
+        download(bytes, `${slug(sk.title)}${mode === 'parts' ? '-parts' : '-chords'}.mid`, 'audio/midi');
+        toast('MIDI file downloaded');
+      };
+      root.addEventListener('click', (e) => {
+        const sk = sketch.get();
+        const tpl = e.target.closest('[data-tpl]');
+        if (tpl) { sketch.add(tpl.dataset.tpl.split(' ').map((n) => E.parseChord(n).id)); st.sel = -1; draw(); return; }
+        const sel = e.target.closest('[data-select]');
+        if (sel) { st.sel = +sel.dataset.select; E.playChord(fromId(sk.items[st.sel].id)); draw(); return; }
+        const mv = e.target.closest('[data-move]');
+        if (mv) { const [i, d] = mv.dataset.move.split(':').map(Number); const it = sk.items.splice(i, 1)[0]; sk.items.splice(i + d, 0, it); st.sel = i + d; sketch.save(); draw(); return; }
+        const dup = e.target.closest('[data-dup]');
+        if (dup) { const i = +dup.dataset.dup; sk.items.splice(i + 1, 0, { ...sk.items[i] }); st.sel = i + 1; sketch.save(); draw(); return; }
+        const del = e.target.closest('[data-del]');
+        if (del) { sk.items.splice(+del.dataset.del, 1); st.sel = Math.min(st.sel, sk.items.length - 1); sketch.save(); draw(); return; }
+        const idea = e.target.closest('[data-idea]');
+        if (idea) {
+          const i = st.sel >= 0 && st.sel < sk.items.length ? st.sel : sk.items.length - 1;
+          sk.items.splice(i + 1, 0, { id: idea.dataset.idea, beats: sk.items[i] ? sk.items[i].beats : 4 });
+          st.sel = i + 1; sketch.save();
+          E.playSequence([fromId(sk.items[i].id), fromId(idea.dataset.idea)], { gap: 0.8 });
+          draw(); return;
+        }
+        if (e.target.closest('#sk-try')) {
+          const first = $('[data-idea]', root);
+          const i = st.sel >= 0 ? st.sel : sk.items.length - 1;
+          if (first) E.playSequence([fromId(sk.items[i].id), fromId(first.dataset.idea)], { gap: 0.8 });
+          return;
+        }
+        const mu = e.target.closest('[data-mute]');
+        if (mu) { const v = mu.dataset.mute; st.mute = st.mute.includes(v) ? st.mute.filter((x) => x !== v) : st.mute.concat(v); draw(); return; }
+        if (e.target.closest('#ex-parts')) exportMidi('parts');
+        if (e.target.closest('#ex-chords')) exportMidi('chords');
+        if (e.target.closest('#ex-chart')) {
+          const lines = [];
+          let bar = [], beat = 0;
+          sk.items.forEach((it, i) => { bar.push(fromId(it.id).name + ' .'.repeat(Math.max(0, it.beats - 1))); beat += it.beats; if (beat >= 4 || i === sk.items.length - 1) { lines.push(bar.join(' ')); bar = []; beat = 0; } });
+          copyText(`${sk.title} (${sk.bpm} bpm)\n| ` + lines.join(' | ') + ' |', 'Chord chart copied');
+        }
+        if (e.target.closest('#ex-link')) {
+          const p = sk.items.map((it) => it.id.replace(':', '-') + '.' + it.beats).join(',');
+          copyText(location.href.split('#')[0] + '#/sketch?p=' + encodeURIComponent(p) + '&bpm=' + sk.bpm + '&t=' + encodeURIComponent(sk.title), 'Share link copied');
+        }
+        const clr = e.target.closest('#ex-clear');
+        if (clr) {
+          if (clr.dataset.armed) { stop(); store.set('sketch.backup', sketch.get()); sketch.set(sketch.blank()); $('#sk-title', root).value = sketch.get().title; draw(); toast('Sketchpad cleared'); }
+          else { clr.dataset.armed = '1'; clr.textContent = 'Click again to clear everything'; clr.classList.add('danger'); setTimeout(() => { if (clr.isConnected) { delete clr.dataset.armed; clr.textContent = 'Clear the sketchpad'; clr.classList.remove('danger'); } }, 3000); }
+        }
+      });
+      root.addEventListener('change', (e) => {
+        const b = e.target.closest('[data-beats]');
+        if (b) { sketch.get().items[+b.dataset.beats].beats = +b.value; sketch.save(); draw(); }
+      });
+      $('#sk-title', root).addEventListener('input', (e) => { sketch.get().title = e.target.value || 'Untitled sketch'; sketch.save(); });
+      $('#sk-bpm', root).addEventListener('input', (e) => { sketch.get().bpm = +e.target.value; $('#sk-bpmv', root).textContent = e.target.value + ' bpm'; sketch.save(); });
+      $('#sk-bpm', root).addEventListener('change', () => draw());
+      $('#sk-play', root).addEventListener('click', () => (st.playing ? stop() : play()));
+      $('#sk-loop', root).addEventListener('click', (e) => { st.loop = !st.loop; store.set('sketch.loop', st.loop); e.target.setAttribute('aria-pressed', st.loop); });
+      window.addEventListener('hashchange', stop, { once: true });
+      draw();
+    } };
+  };
+
   /* ---------- Router ---------- */
-  const TITLES = { home: 'Callipari Lab', circle: 'The Mandala', proximity: 'Proximity Ladder', bridges: 'Bridge Finder', plr: 'PLR Tree', modes: 'Modal Map', extensions: 'Extension Board', voices: 'Four Voices' };
+  const TITLES = { sketch: 'Sketchpad', home: 'Callipari Lab', circle: 'The Mandala', proximity: 'Proximity Ladder', bridges: 'Bridge Finder', plr: 'PLR Tree', modes: 'Modal Map', extensions: 'Extension Board', voices: 'Four Voices' };
   function route() {
-    const key = (location.hash.replace(/^#\/?/, '') || 'home').split('?')[0];
+    const [key0, query] = (location.hash.replace(/^#\/?/, '') || 'home').split('?');
+    const key = key0;
+    if (key === 'sketch' && query) {
+      const q = new URLSearchParams(query);
+      const items = (q.get('p') || '').split(',').map((x) => { const m = /^(\d+)-(\w+)\.(\d+)$/.exec(x); return m && E.QUALITIES[m[2]] ? { id: (+m[1] % 12) + ':' + m[2], beats: Math.min(16, Math.max(1, +m[3])) } : null; }).filter(Boolean);
+      if (items.length) {
+        const prev = sketch.get();
+        if (prev.items.length) store.set('sketch.backup', prev);
+        sketch.set({ title: (q.get('t') || 'Shared sketch').slice(0, 80), bpm: Math.min(180, Math.max(50, +q.get('bpm') || 92)), items });
+        sharedLoaded = prev.items.length > 0;
+        toast('Shared sketch loaded');
+      }
+      history.replaceState(null, '', '#/sketch');
+    }
     const view = VIEWS[key] ? key : 'home';
     $$('.nav a').forEach((a) => (a.getAttribute('href') === '#/' + view ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
     try {
@@ -841,5 +1143,6 @@
   }
   window.addEventListener('hashchange', route);
   $('.menu-btn').addEventListener('click', () => { const s = $('.side'); s.classList.toggle('open'); $('.menu-btn').setAttribute('aria-expanded', s.classList.contains('open')); });
+  sketch.badge();
   route();
 })();

@@ -82,5 +82,14 @@ eq(shape('Bb'), 'x13331', 'guitar Bb barre');
 eq(shape('C#m'), 'x46654', 'guitar C#m barre');
 eq(E.guitarShapes(E.parseChord('Bb').pcs, 10).length > 2, true, 'alternatives up the neck');
 eq(E.identify([0, 4, 7, 10], 0).name, 'C7', 'identify C7');
+const mf = E.midiFile([{ name: 'Soprano', channel: 0, notes: [{ midi: 72, start: 0, dur: 4 }, { midi: 74, start: 4, dur: 4 }] }], { bpm: 120, markers: [{ beat: 0, text: 'C' }] });
+const str4 = (a, i) => String.fromCharCode(a[i], a[i + 1], a[i + 2], a[i + 3]);
+eq(str4(mf, 0), 'MThd', 'MIDI header');
+eq([mf[9], mf[11]], [1, 2], 'format 1 with tempo track plus one part');
+let pos = 14, chunks = 0, ok = true;
+while (pos < mf.length) { if (str4(mf, pos) !== 'MTrk') { ok = false; break; } const len = (mf[pos + 4] << 24) | (mf[pos + 5] << 16) | (mf[pos + 6] << 8) | mf[pos + 7]; pos += 8 + len; chunks++; }
+eq([ok, chunks, pos === mf.length], [true, 2, true], 'chunk lengths add up');
+const ons = Array.from(mf).filter((b, i) => b === 0x90 && (mf[i + 1] === 72 || mf[i + 1] === 74)).length;
+eq(ons, 2, 'two note-ons');
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

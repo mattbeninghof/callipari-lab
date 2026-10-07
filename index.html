@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="app.css?v=8">
+  <link rel="stylesheet" href="app.css?v=11">
 </head>
 <body>
   <div class="shell">
@@ -28,6 +28,9 @@
       </a>
       <button class="btn menu-btn" aria-expanded="false" aria-controls="nav">Menu</button>
       <nav class="nav" id="nav" aria-label="Tools">
+        <div class="nav-group"><span>Write</span>
+          <a href="#/sketch" class="f-hand"><i></i><span style="color:var(--ink)">Sketchpad</span><span class="count" id="sketch-count" hidden>0</span></a>
+        </div>
         <div class="nav-group"><span>Illustrated Harmony</span>
           <a href="#/circle" class="f-maj"><i></i><span style="color:var(--ink)">The Mandala</span></a>
           <a href="#/proximity" class="f-min"><i></i><span style="color:var(--ink)">Proximity Ladder</span></a>
@@ -54,7 +57,7 @@
   </div>
   <aside class="dock" id="dock" aria-label="Piano keys and guitar shape" aria-live="polite"></aside>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="engine.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="engine.js?v=11"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>

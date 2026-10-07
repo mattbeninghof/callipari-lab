@@ -535,6 +535,55 @@
     return null;
   }
 
+
+  /* ---------- MIDI export ---------- */
+  /* Standard MIDI File, format 1, 480 ticks per beat. tracks: [{ name, channel, program,
+     notes: [{ midi, start, dur, vel }] }] with start and dur in beats. markers: [{ beat, text }]
+     land on the tempo track so DAWs show chord names on the timeline. */
+  function midiFile(tracks, { bpm = 100, markers = [], title = 'Sketch' } = {}) {
+    const PPQ = 480;
+    const vlq = (n) => {
+      const out = [n & 0x7f];
+      while ((n >>= 7)) out.unshift((n & 0x7f) | 0x80);
+      return out;
+    };
+    const text = (str) => Array.from(unescape(encodeURIComponent(str))).map((ch) => ch.charCodeAt(0));
+    const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+    const chunk = (events) => {
+      events.sort((a, b) => a.t - b.t || a.order - b.order);
+      const body = [];
+      let last = 0;
+      for (const e of events) { body.push(...vlq(e.t - last), ...e.data); last = e.t; }
+      body.push(0, 0xff, 0x2f, 0);
+      return [0x4d, 0x54, 0x72, 0x6b, ...u32(body.length), ...body];
+    };
+    const tick = (beats) => Math.max(0, Math.round(beats * PPQ));
+    const meta = (type, bytes) => [0xff, type, ...vlq(bytes.length), ...bytes];
+    const tempo = Math.round(60000000 / bpm);
+    const conductor = [
+      { t: 0, order: 0, data: meta(0x03, text(title)) },
+      { t: 0, order: 1, data: meta(0x51, [(tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]) },
+      { t: 0, order: 2, data: meta(0x58, [4, 2, 24, 8]) },
+      ...markers.map((m) => ({ t: tick(m.beat), order: 3, data: meta(0x06, text(m.text)) })),
+    ];
+    const chunks = [chunk(conductor)];
+    for (const tr of tracks) {
+      const ch = (tr.channel ?? 0) & 15;
+      const ev = [
+        { t: 0, order: 0, data: meta(0x03, text(tr.name || 'Track')) },
+        { t: 0, order: 1, data: [0xc0 | ch, (tr.program ?? 0) & 127] },
+      ];
+      for (const n of tr.notes) {
+        const on = tick(n.start), off = Math.max(on + 1, tick(n.start + n.dur));
+        ev.push({ t: on, order: 3, data: [0x90 | ch, n.midi & 127, Math.max(1, Math.min(127, n.vel ?? 90))] });
+        ev.push({ t: off, order: 2, data: [0x80 | ch, n.midi & 127, 0] });
+      }
+      chunks.push(chunk(ev));
+    }
+    const header = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, chunks.length, (PPQ >> 8) & 255, PPQ & 255];
+    return new Uint8Array(header.concat(...chunks));
+  }
+
   /* ---------- Audio ---------- */
   let ctx = null, master = null, verb = null;
   function audio() {
@@ -660,7 +709,7 @@
     proximity, proximityRange, P, L, R, nrPath, bartokAxes, bridgesTo, bridgeBetween,
     brightness, scaleNotes, isMinorMode, referenceOf, modeDiff, modeLinks, characteristic, modeKit, harmonize, triadQuality, steps, tensionClash, harmonics,
     glueIndex, plrGenerations, intervalWeb, EXT_TEETH, extensionStatus, polychord, satb, satbCheck,
-    TUNING, guitarShapes, identify,
+    TUNING, guitarShapes, identify, midiFile,
     freq, voice, voiceLead, playMidi, playFreqs, audioOk, playChord, playSequence, playScale,
   };
 
